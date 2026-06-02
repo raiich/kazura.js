@@ -1,0 +1,37 @@
+state diagram:
+```mermaid
+stateDiagram-v2
+  [*] --> InitialState
+  InitialState --> WaitingState: CoinEvent
+  PouringState --> InitialState: DoneEvent
+  WaitingState --> InitialState: DoneEvent
+  WaitingState --> PouringState: ButtonEvent
+  WaitingState --> WaitingState: CoinEvent
+```
+transition from=null to=InitialState event=null
+scenario: basic (pouring water)
+transition from=InitialState to=WaitingState event=1
+coin count=1
+transition from=WaitingState to=PouringState event=water
+pouring item=water
+transition from=PouringState to=InitialState event=done
+---
+scenario: basic (pouring coffee)
+transition from=InitialState to=WaitingState event=1
+coin count=1
+transition from=WaitingState to=WaitingState event=2
+coin count=2
+transition from=WaitingState to=PouringState event=coffee
+pouring item=coffee
+transition from=PouringState to=InitialState event=done
+---
+scenario: insufficient coins and cancel
+transition from=InitialState to=WaitingState event=1
+coin count=1
+insufficient coins error="2 coin(s) for coffee, but 1"
+transition from=WaitingState to=InitialState event=cancel
+---
+scenario: timeout
+transition from=InitialState to=WaitingState event=1
+coin count=1
+transition from=WaitingState to=InitialState event=timeout
