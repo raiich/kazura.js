@@ -1,5 +1,7 @@
 import type { Timer } from "../timer.js";
 import type { Dispatcher } from "../dispatcher.js";
+import type { Task } from "../task.js";
+import { PendingTask, CanceledTask, type RunFailure } from "../internal/task.js";
 
 /**
  * EventLoopDispatcher manages scheduled tasks with controllable time progression.
@@ -9,6 +11,7 @@ import type { Dispatcher } from "../dispatcher.js";
 export class EventLoopDispatcher implements Dispatcher {
   private now: number;
   private tasks: ScheduledTask[] = [];
+  private ended = false;
 
   constructor(now: number) {
     this.now = now;
@@ -16,7 +19,9 @@ export class EventLoopDispatcher implements Dispatcher {
 
   /**
    * fastForward advances the time to the specified time and executes all tasks
-   * that are scheduled to run during this time period.
+   * that are scheduled to run during this time period. If a task throws, the
+   * dispatcher stops (subsequent tasks are canceled) and fastForward throws an
+   * Error whose `cause` is the thrown value.
    */
   fastForward(to: number): void {
     for (;;) {
@@ -24,23 +29,45 @@ export class EventLoopDispatcher implements Dispatcher {
       if (head == null) {
         return;
       }
-      head.exec();
+      const failure = head.exec();
+      if (failure) {
+        this.shutdown();
+        // The operator drives time, so report the failure to it as a distinct
+        // wrapped error; the task's own wait() still re-throws the original
+        // value. Separating the two channels keeps a single panic from
+        // surfacing as the same value twice.
+        throw new Error("eventloop dispatcher stopped: a dispatched function threw", {
+          cause: failure.value,
+        });
+      }
+    }
+  }
+
+  /**
+   * shutdown stops the dispatcher after a task throws. Queued tasks are canceled
+   * so invokeFunc waiters settle, but stay in the queue so a Timer.stop can still
+   * cancel them; the ended gate keeps them from running.
+   */
+  private shutdown(): void {
+    this.ended = true;
+    for (const entry of this.tasks) {
+      entry.cancel();
     }
   }
 
   private proceedAndDequeue(end: number): ScheduledTask | null {
-    if (end < this.now) {
-      throw new Error(
-        `unprocessable time: now=${this.now}, to=${end}`,
-      );
-    }
-
-    const head = this.dequeue(end);
-    if (head == null) {
-      this.now = end;
+    // A shut-down dispatcher runs nothing further, and does not advance time.
+    if (this.ended) {
       return null;
     }
-    this.now = head.at;
+    const head = this.dequeue(end);
+    if (head == null) {
+      // Fast-forwarding backward runs nothing and does not rewind time.
+      if (end > this.now) {
+        this.now = end;
+      }
+      return null;
+    }
     return head;
   }
 
@@ -53,12 +80,31 @@ export class EventLoopDispatcher implements Dispatcher {
       return null;
     }
     this.tasks.splice(0, 1);
+    this.now = head.at;
     return head;
   }
 
   afterFunc(delayMs: number, f: () => void): Timer {
-    const at = this.now + delayMs;
-    const entry = new ScheduledTask(at, f);
+    const entry = this.enqueue(this.now + delayMs, new PendingTask(f));
+    return new TaskTimer(this, entry);
+  }
+
+  /**
+   * invokeFunc schedules f to run at the current simulated time, executed by the
+   * next fastForward, and returns a Task; its wait() observes completion. On a
+   * stopped dispatcher f never runs and wait() rejects with ErrCanceled.
+   */
+  invokeFunc(f: () => void): Task {
+    if (this.ended) {
+      return CanceledTask;
+    }
+    const pending = new PendingTask(f);
+    this.enqueue(this.now, pending);
+    return pending;
+  }
+
+  private enqueue(at: number, pending: PendingTask): ScheduledTask {
+    const entry = new ScheduledTask(at, pending);
 
     // Find insertion point to maintain chronological order
     let i = 0;
@@ -70,7 +116,7 @@ export class EventLoopDispatcher implements Dispatcher {
     }
     this.tasks.splice(i, 0, entry);
 
-    return new TaskTimer(this, entry);
+    return entry;
   }
 
   /** @internal Returns the number of scheduled tasks (for testing). */
@@ -92,11 +138,15 @@ export class EventLoopDispatcher implements Dispatcher {
 class ScheduledTask {
   constructor(
     readonly at: number,
-    private task: () => void,
+    private pending: PendingTask,
   ) {}
 
-  exec(): void {
-    this.task();
+  exec(): RunFailure | null {
+    return this.pending.run();
+  }
+
+  cancel(): void {
+    this.pending.cancel();
   }
 }
 

@@ -189,7 +189,7 @@ See the code example at [examples/vending-machine](examples/vending-machine/main
 ## Packages
 
 - **`state/`** - State machines that unify transitions and timeout handling, eliminating timing issues
-- **`task/`** - Dispatchers that serialize async tasks (queue, eventloop) to prevent race conditions
+- **`task/`** - Dispatchers that serialize async tasks (runtime, eventloop) to prevent race conditions
 
 ## Documentation
 

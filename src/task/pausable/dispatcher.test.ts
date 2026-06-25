@@ -43,6 +43,18 @@ describe("pause()", () => {
     expect(executed).toBe(false);
   });
 
+  it("invokeFunc is not buffered during pause", async () => {
+    const { dispatcher, advance } = setup();
+    dispatcher.pause();
+
+    let executed = false;
+    const task = dispatcher.invokeFunc(() => { executed = true; });
+    advance(0);
+
+    expect(executed).toBe(true);
+    await expect(task.wait()).resolves.toBeUndefined();
+  });
+
   it("afterFunc during pause is buffered", () => {
     const { dispatcher, advance } = setup();
     let executed = false;

@@ -27,6 +27,46 @@ export function dispatcherContractTests(
       });
     });
 
+    describe("invokeFunc", () => {
+      it("runs submitted functions serialized", () => {
+        const { dispatcher, advanceTo } = factory();
+        let counter = 0;
+        let actual = 0;
+
+        dispatcher.invokeFunc(() => {
+          counter += 2;
+          actual = counter;
+        });
+        dispatcher.invokeFunc(() => {
+          counter += 3;
+          actual = counter;
+        });
+
+        advanceTo(0);
+        expect(actual).toBe(5);
+        advanceTo(50);
+        expect(actual).toBe(5);
+      });
+
+      it("the returned promise resolves after the function completes", async () => {
+        const { dispatcher, advanceTo } = factory();
+        let ran = false;
+
+        const task = dispatcher.invokeFunc(() => {
+          ran = true;
+        });
+        advanceTo(0);
+
+        await expect(task.wait()).resolves.toBeUndefined();
+        expect(ran).toBe(true);
+      });
+
+      // How a thrown value reaches the driver differs per dispatcher (a wrapped
+      // throw vs an uncaught rejection), so those assertions live in each
+      // dispatcher's own test file. The shared contract for wait() is that it
+      // re-throws the original thrown value, covered there too.
+    });
+
     describe("Timer.stop", () => {
       it("before execution", () => {
         const { dispatcher, advanceTo } = factory();
@@ -228,6 +268,9 @@ export function dispatcherContractTests(
     });
 
     describe("error handling", () => {
+      // afterFunc returns no Task to observe, so a throwing callback surfaces
+      // during time advancement in both dispatchers. The exact value differs
+      // (a wrapped throw vs the original), asserted in each dispatcher's tests.
       it("callback error propagates", () => {
         const { dispatcher, advanceTo } = factory();
 
@@ -235,7 +278,7 @@ export function dispatcherContractTests(
           throw new Error("test error");
         });
 
-        expect(() => advanceTo(10)).toThrow("test error");
+        expect(() => advanceTo(10)).toThrow();
       });
 
       it("null function", () => {

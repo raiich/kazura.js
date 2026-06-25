@@ -1,4 +1,5 @@
 import type { Timer } from "../timer.js";
+import type { Task } from "../task.js";
 import type { Dispatcher } from "../dispatcher.js";
 
 export class PausableDispatcher implements Dispatcher {
@@ -24,6 +25,14 @@ export class PausableDispatcher implements Dispatcher {
     return {
       stop: () => this.stop(entry),
     };
+  }
+
+  /**
+   * invokeFunc submits f to the base dispatcher for serialized execution. Unlike
+   * afterFunc it is not buffered while paused, since it carries no delay to suspend.
+   */
+  invokeFunc(f: () => void): Task {
+    return this.base.invokeFunc(f);
   }
 
   private stop(entry: TrackedEntry): boolean {

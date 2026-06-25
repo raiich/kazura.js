@@ -189,7 +189,7 @@ dispatcher.fastForward(Date.now() + 10_000);  // 10秒をシミュレート
 ## パッケージ
 
 - **`state/`** - 状態遷移とタイムアウト処理を統一し、タイミング問題を排除するステートマシン
-- **`task/`** - 非同期タスクを直列化する Dispatcher（queue、eventloop）で競合状態を防止
+- **`task/`** - 非同期タスクを直列化する Dispatcher（runtime、eventloop）で競合状態を防止
 
 ## ドキュメント
 
