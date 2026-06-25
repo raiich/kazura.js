@@ -83,6 +83,10 @@ export class Machine<S extends State<T>, T> {
    * Launch starts the state machine and transitions to the initial state.
    * The event parameter is passed to the initial state's entry method.
    * Throws if the machine is already launched.
+   *
+   * Unlike a no-argument start, launch requires an event so that entry()
+   * keeps a uniform (machine, event) signature across the initial entry and
+   * trigger-driven entries, matching the event-based transition model.
    */
   launch(event: object): void {
     if (this.state === MachineState.Launched) {
